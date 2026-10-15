@@ -34,6 +34,17 @@ type Proposal = {
   message: string;
 };
 
+
+type PolicyResult = {
+  allowed: boolean;
+  decision: string;
+  reason: string;
+  product?: Product;
+  requires_approval: boolean;
+  payment_authorized?: boolean;
+};
+
+
 const API = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 ).replace(/\/$/, "");
@@ -52,6 +63,15 @@ export default function Home() {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState("");
+
+  // Policy Evaluation
+
+  const [maxBudget, setMaxBudget] = useState("1000");
+  const [selectedProductId, setSelectedProductId] = useState("p007");
+  const [policyResult, setPolicyResult] = useState<PolicyResult | null>(null);
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policyError, setPolicyError] = useState("");
+
 
   // Initial load
   useEffect(() => {
@@ -151,6 +171,58 @@ export default function Home() {
     const nextQuery = term === "All" ? "" : term;
     setQuery(nextQuery);
     void searchProducts(nextQuery);
+  }
+
+  async function evaluateSpendingPolicy() {
+    const budget = Number(maxBudget);
+
+    if (!Number.isFinite(budget) || budget <= 0) {
+      setPolicyError("Enter a valid budget greater than ₹0.");
+      setPolicyResult(null);
+      return;
+    }
+
+    if (!selectedProductId) {
+      setPolicyError("Select a product first.");
+      setPolicyResult(null);
+      return;
+    }
+
+    setPolicyLoading(true);
+    setPolicyError("");
+    setPolicyResult(null);
+
+    try {
+      const response = await fetch(`${API}/api/policies/evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: selectedProductId,
+          policy: {
+            max_budget_inr: budget,
+            require_approval: true,
+          },
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Policy evaluation failed."
+        );
+      }
+
+      setPolicyResult(data as PolicyResult);
+    } catch (err) {
+      setPolicyError(
+        err instanceof Error ? err.message : "Could not evaluate policy."
+      );
+    } finally {
+      setPolicyLoading(false);
+    }
   }
 
   const activeCategory =
@@ -273,6 +345,125 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        {/* Spending Controls */}
+        <section className="mt-12 rounded-2xl border border-white/10 bg-white/[0.035] p-6 md:p-8">
+          <p className="text-sm font-semibold tracking-widest text-cyan-400">
+            SPENDING CONTROLS
+          </p>
+          <h2 className="mt-3 text-2xl font-bold">
+            Your money. Your rules.
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-400">
+            Set your maximum purchase budget and check whether a product
+            satisfies your spending policy.
+          </p>
+
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+            <div>
+              <label
+                htmlFor="policy-budget"
+                className="mb-2 block text-sm text-slate-300"
+              >
+                Maximum budget (INR)
+              </label>
+              <input
+                id="policy-budget"
+                type="number"
+                min="1"
+                max="10000000"
+                step="1"
+                value={maxBudget}
+                onChange={(event) => setMaxBudget(event.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-cyan-400"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="policy-product"
+                className="mb-2 block text-sm text-slate-300"
+              >
+                Product to evaluate
+              </label>
+              <select
+                id="policy-product"
+                value={selectedProductId}
+                onChange={(event) => {
+                  setSelectedProductId(event.target.value);
+                  setPolicyResult(null);
+                  setPolicyError("");
+                }}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-cyan-400"
+              >
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} — ₹
+                    {product.price.toLocaleString("en-IN")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void evaluateSpendingPolicy()}
+            disabled={policyLoading || products.length === 0}
+            className="mt-6 rounded-xl bg-cyan-400 px-6 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50"
+          >
+            {policyLoading ? "Evaluating..." : "Evaluate spending policy"}
+          </button>
+
+          {policyError && (
+            <p role="alert" className="mt-4 text-sm text-red-300">
+              {policyError}
+            </p>
+          )}
+
+          {policyResult && (
+            <div className="mt-6 rounded-xl border border-white/10 bg-slate-900/80 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="font-semibold">Policy decision</h3>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    policyResult.allowed
+                      ? "bg-emerald-400/10 text-emerald-300"
+                      : "bg-red-400/10 text-red-300"
+                  }`}
+                >
+                  {policyResult.decision}
+                </span>
+              </div>
+
+              <p className="mt-4 text-sm leading-6 text-slate-300">
+                {policyResult.reason}
+              </p>
+
+              {policyResult.product && (
+                <p className="mt-3 text-sm text-slate-400">
+                  Product: {policyResult.product.name} · ₹
+                  {policyResult.product.price.toLocaleString("en-IN")}
+                </p>
+              )}
+
+              <div className="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
+                <p className="text-slate-300">
+                  Budget check:{" "}
+                  <span className={policyResult.allowed ? "text-emerald-300" : "text-red-300"}>
+                    {policyResult.allowed ? "Passed" : "Rejected"}
+                  </span>
+                </p>
+                <p className="text-amber-300">
+                  User approval required: Yes
+                </p>
+                <p className="text-slate-400">
+                  Payment authorized: No
+                </p>
+              </div>
+            </div>
+          )}
+        </section>
 
         {/* Manual Catalog Search Bar */}
         <div className="mt-14">
