@@ -20,7 +20,7 @@ type Proposal = {
   user_request: string;
   criteria: {
     category: string | null;
-    max_budget_inr: number | null;
+    max_budget_usd: number | null;
     minimum_rating: number | null;
   };
   count: number;
@@ -33,6 +33,25 @@ type Proposal = {
   };
   message: string;
 };
+
+
+type CheckoutOrder = {
+  order_id: string;
+  status: string;
+  approval_url: string;
+  product: {
+    id: string;
+    name: string;
+    price: string;
+    currency: string;
+  };
+  checkout: {
+    currency: string;
+    amount: string;
+  };
+  message: string;
+};
+
 
 
 type PolicyResult = {
@@ -66,11 +85,20 @@ export default function Home() {
 
   // Policy Evaluation
 
-  const [maxBudget, setMaxBudget] = useState("1000");
+  const [maxBudget, setMaxBudget] = useState("300");
   const [selectedProductId, setSelectedProductId] = useState("p007");
   const [policyResult, setPolicyResult] = useState<PolicyResult | null>(null);
   const [policyLoading, setPolicyLoading] = useState(false);
   const [policyError, setPolicyError] = useState("");
+
+  // Checkout
+
+  const [checkoutProductId, setCheckoutProductId] = useState("p007");
+  const [checkoutBudget, setCheckoutBudget] = useState("300");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutOrder, setCheckoutOrder] = useState<CheckoutOrder | null>(null);
+
 
 
   // Initial load
@@ -177,7 +205,7 @@ export default function Home() {
     const budget = Number(maxBudget);
 
     if (!Number.isFinite(budget) || budget <= 0) {
-      setPolicyError("Enter a valid budget greater than ₹0.");
+      setPolicyError("Enter a valid budget greater than $0.");
       setPolicyResult(null);
       return;
     }
@@ -199,7 +227,7 @@ export default function Home() {
         body: JSON.stringify({
           product_id: selectedProductId,
           policy: {
-            max_budget_inr: budget,
+            max_budget_usd: budget,
             require_approval: true,
           },
         }),
@@ -223,6 +251,52 @@ export default function Home() {
     } finally {
       setPolicyLoading(false);
     }
+  }
+
+  async function startCheckout() {
+    const budget = Number(checkoutBudget);
+
+    if (!Number.isFinite(budget) || budget <= 0) {
+      setCheckoutError("Enter a valid budget greater than $0.");
+      return;
+    }
+
+    setCheckoutLoading(true);
+    setCheckoutError("");
+    setCheckoutOrder(null);
+
+    try {
+      const response = await fetch(`${API}/api/checkout/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: checkoutProductId,
+          max_budget_usd: budget,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not create checkout order.");
+      }
+
+      const order = data as CheckoutOrder;
+      setCheckoutOrder(order);
+
+      // Let the user inspect the order amount before opening PayPal.
+    } catch (err) {
+      setCheckoutError(
+        err instanceof Error ? err.message : "Checkout creation failed."
+      );
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
+
+  function openPayPalApproval() {
+    if (!checkoutOrder?.approval_url) return;
+    window.location.assign(checkoutOrder.approval_url);
   }
 
   const activeCategory =
@@ -275,7 +349,7 @@ export default function Home() {
             <input
               value={agentRequest}
               onChange={(e) => setAgentRequest(e.target.value)}
-              placeholder="e.g. I want headphones under ₹25,000 rated above 4.7"
+              placeholder="e.g. I want headphones under $250 rated above 4.7"
               className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-slate-900/80 px-5 py-4 text-white outline-none placeholder:text-slate-500 focus:border-cyan-400"
             />
             <button
@@ -324,8 +398,8 @@ export default function Home() {
                 <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3">
                   <p className="text-xs text-slate-400">Budget Limit</p>
                   <p className="font-semibold text-cyan-300">
-                    {proposal.criteria.max_budget_inr
-                      ? `₹${proposal.criteria.max_budget_inr.toLocaleString("en-IN")}`
+                    {proposal.criteria.max_budget_usd
+                      ? `$${proposal.criteria.max_budget_usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       : "Unrestricted"}
                   </p>
                 </div>
@@ -365,13 +439,13 @@ export default function Home() {
                 htmlFor="policy-budget"
                 className="mb-2 block text-sm text-slate-300"
               >
-                Maximum budget (INR)
+                Maximum budget (USD)
               </label>
               <input
                 id="policy-budget"
                 type="number"
                 min="1"
-                max="10000000"
+                max="1000000"
                 step="1"
                 value={maxBudget}
                 onChange={(event) => setMaxBudget(event.target.value)}
@@ -398,8 +472,7 @@ export default function Home() {
               >
                 {products.map((product) => (
                   <option key={product.id} value={product.id}>
-                    {product.name} — ₹
-                    {product.price.toLocaleString("en-IN")}
+                    {product.name} — ${product.price.toFixed(2)}
                   </option>
                 ))}
               </select>
@@ -426,11 +499,10 @@ export default function Home() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className="font-semibold">Policy decision</h3>
                 <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    policyResult.allowed
-                      ? "bg-emerald-400/10 text-emerald-300"
-                      : "bg-red-400/10 text-red-300"
-                  }`}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${policyResult.allowed
+                    ? "bg-emerald-400/10 text-emerald-300"
+                    : "bg-red-400/10 text-red-300"
+                    }`}
                 >
                   {policyResult.decision}
                 </span>
@@ -442,8 +514,8 @@ export default function Home() {
 
               {policyResult.product && (
                 <p className="mt-3 text-sm text-slate-400">
-                  Product: {policyResult.product.name} · ₹
-                  {policyResult.product.price.toLocaleString("en-IN")}
+                  Product: {policyResult.product.name} · $
+                  {policyResult.product.price.toFixed(2)} USD
                 </p>
               )}
 
@@ -461,6 +533,104 @@ export default function Home() {
                   Payment authorized: No
                 </p>
               </div>
+            </div>
+          )}
+        </section>
+
+        {/* PayPal Sandbox Checkout */}
+        <section className="mt-12 rounded-2xl border border-white/10 bg-white/[0.035] p-6 md:p-8">
+          <p className="text-sm font-semibold tracking-widest text-cyan-400">
+            PAYPAL SANDBOX CHECKOUT
+          </p>
+          <h2 className="mt-3 text-2xl font-bold">Ready to purchase?</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-400">
+            Validate your budget, review the order details, and continue to
+            PayPal Sandbox for buyer approval.
+          </p>
+
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+            <div>
+              <label htmlFor="checkout-product" className="mb-2 block text-sm text-slate-300">
+                Product
+              </label>
+              <select
+                id="checkout-product"
+                value={checkoutProductId}
+                onChange={(event) => {
+                  setCheckoutProductId(event.target.value);
+                  setCheckoutOrder(null);
+                  setCheckoutError("");
+                }}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-cyan-400"
+              >
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} — ${product.price.toFixed(2)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="checkout-budget" className="mb-2 block text-sm text-slate-300">
+                Maximum budget (USD)
+              </label>
+              <input
+                id="checkout-budget"
+                type="number"
+                min="1"
+                max="1000000"
+                step="1"
+                value={checkoutBudget}
+                onChange={(event) => {
+                  setCheckoutBudget(event.target.value);
+                  setCheckoutOrder(null);
+                }}
+                className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-cyan-400"
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void startCheckout()}
+            disabled={checkoutLoading || products.length === 0}
+            className="mt-6 rounded-xl bg-cyan-400 px-6 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50"
+          >
+            {checkoutLoading ? "Creating order..." : "Create Sandbox order"}
+          </button>
+
+          {checkoutError && (
+            <p role="alert" className="mt-4 text-sm text-red-300">
+              {checkoutError}
+            </p>
+          )}
+
+          {checkoutOrder && (
+            <div className="mt-6 rounded-xl border border-white/10 bg-slate-900/80 p-5">
+              <p className="text-xs uppercase tracking-wider text-cyan-300">
+                Order created · {checkoutOrder.status}
+              </p>
+              <h3 className="mt-3 text-lg font-semibold">
+                {checkoutOrder.product.name}
+              </h3>
+              <p className="mt-2 text-sm text-slate-400">
+                Catalog price: ${Number(checkoutOrder.product.price).toFixed(2)} USD
+              </p>
+              <p className="mt-2 text-2xl font-bold text-cyan-300">
+                ${Number(checkoutOrder.checkout.amount).toFixed(2)} {checkoutOrder.checkout.currency}
+              </p>
+              <p className="mt-3 text-sm text-slate-400">
+                {checkoutOrder.message}
+              </p>
+
+              <button
+                type="button"
+                onClick={openPayPalApproval}
+                className="mt-5 rounded-xl bg-cyan-400 px-6 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300"
+              >
+                Continue to PayPal Sandbox
+              </button>
             </div>
           )}
         </section>
@@ -556,10 +726,9 @@ export default function Home() {
 
               <div className="mt-6 border-t border-white/10 pt-4">
                 <p className="text-2xl font-bold">
-                  {new Intl.NumberFormat("en-IN", {
+                  {new Intl.NumberFormat("en-US", {
                     style: "currency",
-                    currency: "INR",
-                    maximumFractionDigits: 0,
+                    currency: "USD",
                   }).format(product.price)}
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
