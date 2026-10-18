@@ -1,20 +1,24 @@
-# PayPilot 💳⚡
+# PayPilot
 > **"AI proposes. Policy protects. PayPal executes."**
 
 [![PayPal Sandbox](https://img.shields.io/badge/PayPal-Sandbox%20v2-003087?style=for-the-badge&logo=paypal&logoColor=white)](https://developer.paypal.com)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16%20Turbopack-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.143-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+
+
 [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-3.8%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![SQLite](https://img.shields.io/badge/SQLite-Audit%20Trail-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org)
 
-PayPilot is an **AI-powered autonomous commerce platform** designed to solve the single largest bottleneck in agentic shopping: **The Trust & Liability Problem**. 
+PayPilot is an **AI-powered autonomous commerce platform** designed to solve the single largest bottleneck in agentic shopping: 
+
+**The Trust & Liability Problem**. 
 
 While modern LLMs can discover products, giving an autonomous agent unrestricted access to financial instruments invites catastrophic risk from hallucinations, prompt injections, and price tampering. PayPilot places an ironclad **Policy-as-Code Shield** between the AI agent and the **PayPal execution network**.
 
 ---
 
-## 🌟 Architecture & Workflow
+## Architecture & Workflow
 
 ```mermaid
 sequenceDiagram
@@ -97,35 +101,6 @@ sequenceDiagram
 | `/v2/checkout/orders` | `POST` | Creates an order with `intent: CAPTURE`, purchase units, and return/cancel application contexts. |
 | `/v2/checkout/orders/{id}` | `GET` | Server-side validation of order status, purchase unit amounts, and currency code. |
 | `/v2/checkout/orders/{id}/capture` | `POST` | Captures authorized funds once buyer approval is verified on PayPal Sandbox. |
-
----
-
-## ⚡ 3-Minute Judge Evaluation Guide
-
-To test the entire autonomous commerce loop in under 3 minutes:
-
-1. **AI Agent Proposal**:
-   - Go to `http://localhost:3000`.
-   - In the **AI Purchase Proposal Agent** box, enter:
-     ```text
-     compact mechanical keyboard under $100
-     ```
-   - Click **Generate AI Proposal**.
-   - Notice the **`⚡ Google gemini-3.8-flash (AI Agent)`** engine badge, target category (`Keyboards`), budget cap (`$100.00`), and synthesized agent reasoning. The catalog instantly ranks `Keychron K2` first.
-
-2. **Policy Shield Enforcement**:
-   - In **Spending Controls**, try setting **Maximum budget** to `$50` and evaluate `Keychron K2` ($89.99).
-   - Notice the policy instantly **REJECTS** the purchase: *"Product price exceeds your maximum budget"*.
-   - Increase budget to `$100` and evaluate again. Notice the policy status shifts to **`APPROVAL_REQUIRED`** with budget surplus breakdown.
-
-3. **PayPal Sandbox Execution**:
-   - In **PayPal Sandbox Checkout**, click **Create Sandbox order**.
-   - Review catalog price and click **Continue to PayPal Sandbox**.
-   - Log in with any PayPal Sandbox Personal test account and click **Complete Purchase**.
-
-4. **Reconciliation & Audit Trail**:
-   - On redirection back to `/checkout/return`, the backend captures and cryptographically verifies the capture ID.
-   - Click **View Transaction Audit →** to view the **Audit Timeline** showing chronological `ORDER_CREATED` and `CAPTURE_VERIFIED` events with expandable payload metadata.
 
 ---
 
