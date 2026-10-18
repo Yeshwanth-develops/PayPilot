@@ -118,7 +118,7 @@ export default function TransactionDetailPage() {
         async function loadAuditEvents(targetOrderId: string) {
             try {
                 const response = await fetch(
-                    `/api/transactions/${encodeURIComponent(targetOrderId)}/events`,
+                    `${API_BASE}/api/transactions/${encodeURIComponent(targetOrderId)}/events`,
                     { signal: controller.signal, cache: "no-store" }
                 );
 
@@ -296,68 +296,76 @@ export default function TransactionDetailPage() {
                             </p>
                         </section>
 
-                        <section className="mt-8 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                            <div className="mb-5">
-                                <h2 className="text-lg font-semibold text-gray-900">
-                                    Audit Timeline
-                                </h2>
-                                <p className="mt-1 text-sm text-gray-500">
-                                    Recorded events for this PayPal transaction.
-                                </p>
+                        <section className="mt-8 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:p-8 shadow-xl backdrop-blur-md">
+                            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="flex h-2.5 w-2.5 rounded-full bg-cyan-400 animate-pulse" />
+                                        <h2 className="text-xl font-bold text-white">
+                                            Audit Timeline
+                                        </h2>
+                                    </div>
+                                    <p className="mt-1 text-sm text-slate-400">
+                                        Cryptographically recorded state transitions for this PayPal transaction.
+                                    </p>
+                                </div>
+                                <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-300">
+                                    Immutable Log
+                                </span>
                             </div>
 
                             {eventsLoading ? (
-                                <p className="text-sm text-gray-500">
+                                <p className="py-4 text-sm text-slate-400">
                                     Loading audit history...
                                 </p>
                             ) : eventsError ? (
-                                <p className="text-sm text-red-600">{eventsError}</p>
+                                <p className="py-4 text-sm text-red-400">{eventsError}</p>
                             ) : events.length === 0 ? (
-                                <p className="text-sm text-gray-500">
+                                <p className="py-4 text-sm text-slate-400">
                                     No audit events recorded for this transaction.
                                 </p>
                             ) : (
-                                <ol className="space-y-5">
+                                <ol className="relative ml-3 space-y-6 border-l border-white/10 pl-6">
                                     {events.map((event) => (
-                                        <li key={event.id} className="flex gap-4">
-                                            <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100">
+                                        <li key={event.id} className="relative">
+                                            <div className="absolute -left-[35px] top-1 flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-slate-950">
                                                 {event.outcome === "SUCCESS" ? (
-                                                    <span className="text-green-600">✓</span>
+                                                    <span className="text-xs font-bold text-emerald-400">✓</span>
                                                 ) : (
-                                                    <span className="text-gray-600">•</span>
+                                                    <span className="text-xs font-bold text-amber-400">•</span>
                                                 )}
                                             </div>
 
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <h3 className="font-medium text-gray-900">
+                                            <div className="rounded-xl border border-white/5 bg-white/[0.025] p-4 transition hover:border-white/10 hover:bg-white/[0.04]">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <h3 className="font-semibold text-white">
                                                         {event.event_type.replaceAll("_", " ")}
                                                     </h3>
 
                                                     <span
-                                                        className={`rounded-full px-2 py-1 text-xs font-medium ${event.outcome === "SUCCESS"
-                                                            ? "bg-green-100 text-green-700"
-                                                            : "bg-gray-100 text-gray-700"
+                                                        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${event.outcome === "SUCCESS"
+                                                            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                                                            : "border-white/10 bg-white/5 text-slate-300"
                                                             }`}
                                                     >
                                                         {event.outcome}
                                                     </span>
                                                 </div>
 
-                                                <p className="mt-1 text-sm text-gray-600">
+                                                <p className="mt-1.5 text-sm text-slate-300">
                                                     {event.message}
                                                 </p>
 
-                                                <p className="mt-2 text-xs text-gray-400">
+                                                <p className="mt-2 font-mono text-xs text-slate-500">
                                                     {new Date(event.created_at).toLocaleString()}
                                                 </p>
 
                                                 {Object.keys(event.metadata ?? {}).length > 0 && (
-                                                    <details className="mt-3">
-                                                        <summary className="cursor-pointer text-sm text-blue-600">
-                                                            View event metadata
+                                                    <details className="mt-3 group">
+                                                        <summary className="cursor-pointer text-xs font-medium text-cyan-400 transition hover:text-cyan-300">
+                                                            View event payload &amp; metadata
                                                         </summary>
-                                                        <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-700">
+                                                        <pre className="mt-2 overflow-x-auto rounded-lg border border-white/10 bg-slate-950 p-3 font-mono text-xs text-cyan-300/90 shadow-inner">
                                                             {JSON.stringify(event.metadata, null, 2)}
                                                         </pre>
                                                     </details>

@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import PolicyExplanation, {
+  type PolicyEvaluation,
+} from "@/components/PolicyExplanation";
 
 type Product = {
   id: string;
@@ -34,7 +37,6 @@ type Proposal = {
   message: string;
 };
 
-
 type CheckoutOrder = {
   order_id: string;
   status: string;
@@ -51,18 +53,6 @@ type CheckoutOrder = {
   };
   message: string;
 };
-
-
-
-type PolicyResult = {
-  allowed: boolean;
-  decision: string;
-  reason: string;
-  product?: Product;
-  requires_approval: boolean;
-  payment_authorized?: boolean;
-};
-
 
 const API = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
@@ -84,10 +74,10 @@ export default function Home() {
   const [agentError, setAgentError] = useState("");
 
   // Policy Evaluation
-
   const [maxBudget, setMaxBudget] = useState("300");
   const [selectedProductId, setSelectedProductId] = useState("p007");
-  const [policyResult, setPolicyResult] = useState<PolicyResult | null>(null);
+  const [policyResult, setPolicyResult] =
+    useState<PolicyEvaluation | null>(null);
   const [policyLoading, setPolicyLoading] = useState(false);
   const [policyError, setPolicyError] = useState("");
 
@@ -236,14 +226,19 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Policy evaluation failed."
-        );
+        const errorDetail = (data as { detail?: unknown })?.detail;
+        const errorMsg =
+          typeof errorDetail === "object" && errorDetail !== null && "message" in errorDetail
+            ? String((errorDetail as { message: unknown }).message)
+            : typeof errorDetail === "string"
+            ? errorDetail
+            : Array.isArray(errorDetail) && errorDetail[0]?.msg
+            ? String(errorDetail[0].msg)
+            : "Policy evaluation failed.";
+        throw new Error(errorMsg);
       }
 
-      setPolicyResult(data as PolicyResult);
+      setPolicyResult(data as PolicyEvaluation);
     } catch (err) {
       setPolicyError(
         err instanceof Error ? err.message : "Could not evaluate policy."
@@ -435,7 +430,7 @@ export default function Home() {
         </div>
 
         {/* Spending Controls */}
-        <section className="mt-12 rounded-2xl border border-white/10 bg-white/[0.035] p-6 md:p-8">
+        <section id="spending-controls" className="mt-12 rounded-2xl border border-white/10 bg-white/[0.035] p-6 md:p-8">
           <p className="text-sm font-semibold tracking-widest text-cyan-400">
             SPENDING CONTROLS
           </p>
@@ -509,44 +504,8 @@ export default function Home() {
           )}
 
           {policyResult && (
-            <div className="mt-6 rounded-xl border border-white/10 bg-slate-900/80 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="font-semibold">Policy decision</h3>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${policyResult.allowed
-                    ? "bg-emerald-400/10 text-emerald-300"
-                    : "bg-red-400/10 text-red-300"
-                    }`}
-                >
-                  {policyResult.decision}
-                </span>
-              </div>
-
-              <p className="mt-4 text-sm leading-6 text-slate-300">
-                {policyResult.reason}
-              </p>
-
-              {policyResult.product && (
-                <p className="mt-3 text-sm text-slate-400">
-                  Product: {policyResult.product.name} · $
-                  {policyResult.product.price.toFixed(2)} USD
-                </p>
-              )}
-
-              <div className="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
-                <p className="text-slate-300">
-                  Budget check:{" "}
-                  <span className={policyResult.allowed ? "text-emerald-300" : "text-red-300"}>
-                    {policyResult.allowed ? "Passed" : "Rejected"}
-                  </span>
-                </p>
-                <p className="text-amber-300">
-                  User approval required: Yes
-                </p>
-                <p className="text-slate-400">
-                  Payment authorized: No
-                </p>
-              </div>
+            <div className="mt-6">
+              <PolicyExplanation policy={policyResult} />
             </div>
           )}
         </section>
@@ -749,11 +708,16 @@ export default function Home() {
                   Demo merchant: {product.merchant}
                 </p>
                 <button
-                  onClick={() =>
-                    window.alert(
-                      `${product.name} selected. The purchase proposal flow is our next step.`
-                    )
-                  }
+                  type="button"
+                  onClick={() => {
+                    setSelectedProductId(product.id);
+                    setCheckoutProductId(product.id);
+                    setPolicyResult(null);
+                    setPolicyError("");
+                    setCheckoutOrder(null);
+                    setCheckoutError("");
+                    document.getElementById("spending-controls")?.scrollIntoView({ behavior: "smooth" });
+                  }}
                   className="mt-5 w-full rounded-xl border border-cyan-400/40 px-4 py-3 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-400/10"
                 >
                   Select product
