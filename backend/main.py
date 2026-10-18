@@ -309,6 +309,83 @@ def search_products(
     }
 
 
+def evaluate_purchase_policy(
+    product: dict,
+    budget_usd: Decimal,
+    require_approval: bool = True,
+) -> dict:
+    """Evaluate a product against PayPilot's existing spending policy."""
+
+    price = Decimal(str(product["price"])).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+    budget = Decimal(str(budget_usd)).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+
+    checks = [
+        {
+            "name": "product_exists",
+            "passed": True,
+            "message": "Product exists in the PayPilot catalog.",
+        },
+        {
+            "name": "currency",
+            "passed": product.get("currency") == "USD",
+            "message": "Product currency must be USD.",
+        },
+        {
+            "name": "budget",
+            "passed": price <= budget,
+            "message": (
+                "Product price is within your spending limit."
+                if price <= budget
+                else "Product price exceeds your maximum budget."
+            ),
+        },
+    ]
+
+    allowed = all(check["passed"] for check in checks)
+
+    if not allowed:
+        decision = "REJECTED"
+        reason = next(
+            check["message"]
+            for check in checks
+            if not check["passed"]
+        )
+    elif require_approval:
+        decision = "APPROVAL_REQUIRED"
+        reason = (
+            "Product is within budget. User approval is still "
+            "required before checkout."
+        )
+    else:
+        decision = "ELIGIBLE_FOR_USER_APPROVAL"
+        reason = (
+            "Product is within budget. User approval is still "
+            "required before payment."
+        )
+
+    return {
+        "allowed": allowed,
+        "decision": decision,
+        "reason": reason,
+        "requires_approval": True,
+        "payment_authorized": False,
+        "budget_analysis": {
+            "currency": "USD",
+            "product_price": str(price),
+            "budget_limit": str(budget),
+            "remaining_budget": str(budget - price),
+            "within_budget": price <= budget,
+        },
+        "checks": checks,
+    }
+
+
 @app.post("/api/policies/evaluate")
 def evaluate_policy(body: PolicyEvaluationRequest):
     product = next(
@@ -322,37 +399,26 @@ def evaluate_policy(body: PolicyEvaluationRequest):
             "decision": "REJECTED",
             "reason": "Product not found.",
             "requires_approval": True,
+            "payment_authorized": False,
+            "budget_analysis": None,
+            "checks": [
+                {
+                    "name": "product_exists",
+                    "passed": False,
+                    "message": "Product was not found in the catalog.",
+                }
+            ],
         }
 
-    if product["currency"] != "USD":
-        return {
-            "allowed": False,
-            "decision": "REJECTED",
-            "reason": "Product currency must be USD.",
-            "requires_approval": True,
-        }
-
-    price = Decimal(str(product["price"]))
-    budget = body.policy.max_budget_usd
-
-    if price > budget:
-        return {
-            "allowed": False,
-            "decision": "REJECTED",
-            "reason": "Product price exceeds your maximum budget.",
-            "product": product,
-            "requires_approval": True,
-        }
+    result = evaluate_purchase_policy(
+        product=product,
+        budget_usd=body.policy.max_budget_usd,
+        require_approval=body.policy.require_approval,
+    )
 
     return {
-        "allowed": True,
-        "decision": "APPROVAL_REQUIRED"
-        if body.policy.require_approval
-        else "ELIGIBLE_FOR_USER_APPROVAL",
-        "reason": "Product is within budget. User approval is still required before checkout.",
+        **result,
         "product": product,
-        "requires_approval": True,
-        "payment_authorized": False,
     }
 
 
@@ -468,21 +534,24 @@ async def create_checkout_order(body: CheckoutRequest):
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found.")
 
-    if product["currency"] != "USD":
-        raise HTTPException(
-            status_code=400,
-            detail="Only USD catalog products are supported.",
-        )
-
     price_usd = Decimal(str(product["price"])).quantize(
         Decimal("0.01"),
         rounding=ROUND_HALF_UP,
     )
 
-    if price_usd > body.max_budget_usd:
+    policy_result = evaluate_purchase_policy(
+        product=product,
+        budget_usd=body.max_budget_usd,
+        require_approval=True,
+    )
+
+    if not policy_result["allowed"]:
         raise HTTPException(
             status_code=409,
-            detail="Purchase rejected: product exceeds the spending limit.",
+            detail={
+                "message": policy_result["reason"],
+                "policy": policy_result,
+            },
         )
 
     base_url = os.getenv(

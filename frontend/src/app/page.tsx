@@ -278,7 +278,13 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "Could not create checkout order.");
+        const errorMsg =
+          typeof data.detail === "object" && data.detail !== null && "message" in data.detail
+            ? String(data.detail.message)
+            : typeof data.detail === "string"
+            ? data.detail
+            : "Could not create checkout order.";
+        throw new Error(errorMsg);
       }
 
       const order = data as CheckoutOrder;
