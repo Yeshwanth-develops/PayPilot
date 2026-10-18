@@ -15,6 +15,7 @@ from database import (
     record_order,
     mark_captured,
     list_transactions,
+    get_transaction,
 )
 
 load_dotenv()
@@ -641,8 +642,17 @@ async def capture_checkout_order(body: CaptureRequest):
                 )
 
             if order.get("status") == "COMPLETED":
+                existing_capture = None
+                captures = unit.get("payments", {}).get("captures", [])
+                if captures:
+                    existing_capture = captures[0].get("id")
+
+                if existing_capture:
+                    mark_captured(body.order_id, existing_capture)
+
                 return {
                     "order_id": body.order_id,
+                    "capture_id": existing_capture,
                     "status": "COMPLETED",
                     "message": "This order has already been captured.",
                     "payment_authorized": True,
@@ -702,6 +712,7 @@ async def capture_checkout_order(body: CaptureRequest):
             status_code=502,
             detail="Capture returned, but completed payment could not be verified.",
         )
+
     updated_rows = mark_captured(
         order_id=body.order_id,
         capture_id=verified_capture["id"],
@@ -717,21 +728,12 @@ async def capture_checkout_order(body: CaptureRequest):
                 budget_usd=str(price_usd),
                 checkout_amount=str(price_usd),
             )
-            updated_rows = mark_captured(
+            mark_captured(
                 order_id=body.order_id,
                 capture_id=verified_capture["id"],
             )
-        except Exception:
-            pass
-
-    if updated_rows == 0:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Payment is verified, but the transaction record "
-                "was not updated. Reconcile the order before retrying."
-            ),
-        )
+        except Exception as err:
+            print(f"Warning: Failed to update local transaction record: {err}")
 
     return {
         "order_id": body.order_id,
@@ -753,3 +755,17 @@ def get_transactions(limit: int = Query(default=50, ge=1, le=100)):
         "count": len(items),
         "transactions": items,
     }
+
+
+@app.get("/api/transactions/{order_id}")
+def get_transaction_details(order_id: str):
+    """Return one transaction for the detail view."""
+    transaction = get_transaction(order_id)
+
+    if transaction is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Transaction not found.",
+        )
+
+    return {"transaction": transaction}

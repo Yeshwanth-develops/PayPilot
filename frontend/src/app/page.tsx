@@ -310,9 +310,17 @@ export default function Home() {
         <Link href="/" className="text-xl font-bold tracking-tight">
           PayPilot<span className="text-cyan-400">.</span>
         </Link>
-        <span className="rounded-full border border-emerald-400/30 px-3 py-1 text-xs text-emerald-300">
-          Sandbox mode
-        </span>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/transactions"
+            className="rounded-xl border border-cyan-400/30 px-4 py-2 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-400/10"
+          >
+            Transaction Dashboard
+          </Link>
+          <span className="rounded-full border border-emerald-400/30 px-3 py-1 text-xs text-emerald-300">
+            Sandbox mode
+          </span>
+        </div>
       </nav>
 
       <section className="mx-auto max-w-6xl px-6 py-14 md:py-20">

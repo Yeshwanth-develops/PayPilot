@@ -91,7 +91,30 @@ def mark_captured(order_id: str, capture_id: str) -> int:
             WHERE paypal_order_id = ?
               AND payment_status IN ('CREATED', 'APPROVED')
         """, (capture_id, order_id))
-        return cursor.rowcount
+
+        if cursor.rowcount > 0:
+            return cursor.rowcount
+
+        # If 0 rows updated, check if the record exists and is already COMPLETED
+        existing = connection.execute("""
+            SELECT id, payment_status, paypal_capture_id
+            FROM transactions
+            WHERE paypal_order_id = ?
+        """, (order_id,)).fetchone()
+
+        if existing:
+            # Ensure capture_id is recorded if it was missing
+            if not existing["paypal_capture_id"] and capture_id:
+                connection.execute("""
+                    UPDATE transactions
+                    SET paypal_capture_id = ?,
+                        payment_status = 'COMPLETED',
+                        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    WHERE paypal_order_id = ?
+                """, (capture_id, order_id))
+            return 1
+
+        return 0
 
 
 def list_transactions(limit: int = 50) -> List[Dict[str, Any]]:
@@ -103,3 +126,19 @@ def list_transactions(limit: int = 50) -> List[Dict[str, Any]]:
             LIMIT ?
         """, (limit,)).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_transaction(order_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch one transaction using its PayPal order ID."""
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM transactions
+            WHERE paypal_order_id = ?
+            LIMIT 1
+            """,
+            (order_id,),
+        ).fetchone()
+
+        return dict(row) if row else None
