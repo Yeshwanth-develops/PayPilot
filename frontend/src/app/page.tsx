@@ -35,6 +35,8 @@ type Proposal = {
     payment_authorized: boolean;
   };
   message: string;
+  engine?: string;
+  reasoning?: string;
 };
 
 type CheckoutOrder = {
@@ -378,12 +380,19 @@ export default function Home() {
 
           {/* Active Proposal Result Banner */}
           {proposal && (
-            <div className="mt-6 rounded-xl border border-white/10 bg-slate-900/90 p-5">
+            <div className="mt-6 rounded-xl border border-cyan-500/30 bg-slate-900/90 p-5 shadow-[0_0_20px_rgba(34,211,238,0.08)]">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
                 <div>
-                  <span className="rounded-full bg-cyan-400/20 px-3 py-1 text-xs font-semibold text-cyan-300">
-                    Proposal {proposal.proposal_id} · {proposal.status}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-cyan-400/20 px-3 py-1 text-xs font-semibold text-cyan-300">
+                      Proposal {proposal.proposal_id} · {proposal.status}
+                    </span>
+                    {proposal.engine && (
+                      <span className="rounded-full border border-purple-400/30 bg-purple-400/10 px-2.5 py-0.5 text-xs font-semibold text-purple-300">
+                        ⚡ {proposal.engine}
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-2 text-sm text-slate-300">
                     Request: &ldquo;{proposal.user_request}&rdquo;
                   </p>
@@ -421,6 +430,15 @@ export default function Home() {
                   </p>
                 </div>
               </div>
+
+              {proposal.reasoning && (
+                <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-950/30 p-3.5 text-xs leading-relaxed text-cyan-200">
+                  <span className="font-bold uppercase tracking-wider text-cyan-400">
+                    Agent Synthesis:{" "}
+                  </span>
+                  {proposal.reasoning}
+                </div>
+              )}
 
               <p className="mt-4 text-sm text-slate-300">
                 {proposal.message}

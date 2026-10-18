@@ -1,7 +1,9 @@
 import base64
 from decimal import Decimal, ROUND_HALF_UP
+import json
 import os
 import re
+from typing import Any, Dict, List, Optional
 import uuid
 
 from dotenv import load_dotenv
@@ -422,87 +424,259 @@ def evaluate_policy(body: PolicyEvaluationRequest):
     }
 
 
-@app.post("/api/agent/propose")
-def create_purchase_proposal(body: PurchaseRequest):
-    """Turn a natural-language request into a structured demo proposal."""
-    request_text = body.request.strip()
+async def parse_intent_with_gemini(request_text: str, api_key: str) -> Optional[dict]:
+    """Extract shopping criteria using Google Gemini Flash models."""
+    candidate_models = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-1.5-flash"]
+    prompt = f"""You are PayPilot's Autonomous Commerce Agent.
+Analyze the user's shopping request and extract search intent to match our catalog.
+Available catalog categories: "Headphones", "Keyboards", "Accessories", "Storage".
+
+User request: "{request_text}"
+
+Respond with ONLY a JSON object:
+{{
+  "category": "Headphones" | "Keyboards" | "Accessories" | "Storage" | null,
+  "max_budget_usd": number or null,
+  "minimum_rating": number or null,
+  "keywords": ["list", "of", "features"],
+  "reasoning": "A concise 1-2 sentence explanation of why you selected these criteria."
+}}
+"""
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            for model in candidate_models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+                resp = await client.post(
+                    url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"response_mime_type": "application/json"},
+                    },
+                )
+                if resp.status_code == 200:
+                    raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    data = json.loads(raw_text)
+                    return {
+                        "category": data.get("category"),
+                        "max_budget_usd": float(data["max_budget_usd"]) if data.get("max_budget_usd") is not None else None,
+                        "minimum_rating": float(data["minimum_rating"]) if data.get("minimum_rating") is not None else None,
+                        "keywords": [str(k) for k in data.get("keywords", [])],
+                        "reasoning": str(data.get("reasoning", "")),
+                        "_model": model,
+                    }
+    except Exception as err:
+        print(f"Gemini intent parsing note: {err}")
+    return None
+
+
+async def parse_intent_with_openai(request_text: str, api_key: str) -> Optional[dict]:
+    """Extract shopping criteria using OpenAI."""
+    url = "https://api.openai.com/v1/chat/completions"
+    prompt = f"""You are PayPilot's Autonomous Commerce Agent.
+Analyze the user's shopping request and extract search intent to match our catalog.
+Available catalog categories: "Headphones", "Keyboards", "Accessories", "Storage".
+
+User request: "{request_text}"
+
+Respond with ONLY a JSON object:
+{{
+  "category": "Headphones" | "Keyboards" | "Accessories" | "Storage" | null,
+  "max_budget_usd": number or null,
+  "minimum_rating": number or null,
+  "keywords": ["list", "of", "features"],
+  "reasoning": "A concise 1-2 sentence explanation of why you selected these criteria."
+}}
+"""
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {"role": "system", "content": "You are a helpful commerce intent parser. Return valid JSON only."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            if resp.status_code == 200:
+                raw_text = resp.json()["choices"][0]["message"]["content"]
+                data = json.loads(raw_text)
+                return {
+                    "category": data.get("category"),
+                    "max_budget_usd": float(data["max_budget_usd"]) if data.get("max_budget_usd") is not None else None,
+                    "minimum_rating": float(data["minimum_rating"]) if data.get("minimum_rating") is not None else None,
+                    "keywords": [str(k) for k in data.get("keywords", [])],
+                    "reasoning": str(data.get("reasoning", "")),
+                }
+    except Exception as err:
+        print(f"OpenAI intent parsing note: {err}")
+    return None
+
+
+def parse_intent_with_rules(request_text: str) -> dict:
+    """Robust deterministic parser when external LLM is not configured."""
     normalized = request_text.lower()
 
-    # Extract maximum budget, e.g. "under $300", "below 250", "max $500", "budget 100"
     budget_match = re.search(
-        r"\b(?:under|below|less than|maximum|max)\s*"
+        r"\b(?:under|below|less than|maximum|max|up to)\s*"
         r"(?:a budget of\s*)?\$?\s*([\d,]+(?:\.\d+)?)",
         normalized,
     )
-
     if not budget_match:
         budget_match = re.search(
             r"\bbudget\s*(?:of\s*)?\$?\s*([\d,]+(?:\.\d+)?)",
             normalized,
         )
+    if not budget_match:
+        budget_match = re.search(
+            r"\$([0-9]+(?:\.[0-9]+)?)|\b([0-9]+(?:\.[0-9]+)?)\s*(?:dollars|usd|bucks)",
+            normalized,
+        )
 
-    max_budget = (
-        float(budget_match.group(1).replace(",", ""))
-        if budget_match
-        else None
-    )
+    max_budget = None
+    if budget_match:
+        val = budget_match.group(1) or (budget_match.group(2) if len(budget_match.groups()) > 1 else None)
+        if val:
+            try:
+                max_budget = float(val.replace(",", ""))
+            except ValueError:
+                pass
 
-    # Extract a minimum rating, e.g. "rating above 4.5".
     rating_match = re.search(
-        r"(?:rating|rated)\s*(?:above|over|at least|of)?\s*"
+        r"(?:rating|rated|stars)\s*(?:above|over|at least|of|\>=?)?\s*"
         r"([1-5](?:\.\d+)?)",
         normalized,
     )
     min_rating = float(rating_match.group(1)) if rating_match else None
 
-    # Identify the requested product category.
     categories = {
-        "headphones": ["headphones", "headphone", "earbuds", "airpods"],
-        "accessories": ["mouse", "accessories"],
-        "keyboards": ["keyboard", "keyboards"],
-        "storage": ["ssd", "storage", "drive"],
+        "Headphones": ["headphones", "headphone", "earbuds", "airpods", "earphones", "audio", "sound"],
+        "Accessories": ["mouse", "mice", "accessories", "accessory", "trackpad"],
+        "Keyboards": ["keyboard", "keyboards", "typing", "mechanical"],
+        "Storage": ["ssd", "storage", "drive", "disk", "nvme", "solid state"],
     }
 
     selected_category = next(
         (
-            category
-            for category, keywords in categories.items()
+            cat
+            for cat, keywords in categories.items()
             if any(keyword in normalized for keyword in keywords)
         ),
         None,
     )
 
-    candidates = DEMO_PRODUCTS
+    feature_words = [
+        "wireless", "wired", "bluetooth", "noise-cancelling", "noise cancelling",
+        "compact", "gaming", "quiet", "ergonomic", "mechanical", "fast"
+    ]
+    extracted_keywords = [word for word in feature_words if word in normalized]
+
+    reasoning_parts = []
+    if selected_category:
+        reasoning_parts.append(f"targeted {selected_category}")
+    if max_budget is not None:
+        reasoning_parts.append(f"enforced a strict ${max_budget:.2f} ceiling")
+    if min_rating is not None:
+        reasoning_parts.append(f"required customer rating >= {min_rating:.1f}")
+    if extracted_keywords:
+        reasoning_parts.append(f"prioritized '{', '.join(extracted_keywords)}' features")
+
+    reasoning = (
+        f"Autonomous agent {' and '.join(reasoning_parts)} to match your intent."
+        if reasoning_parts
+        else "Analyzed your request against catalog specifications to find optimal value matches."
+    )
+
+    return {
+        "category": selected_category,
+        "max_budget_usd": max_budget,
+        "minimum_rating": min_rating,
+        "keywords": extracted_keywords,
+        "reasoning": reasoning,
+    }
+
+
+@app.post("/api/agent/propose")
+async def create_purchase_proposal(body: PurchaseRequest):
+    """Turn a natural-language request into a structured AI purchase proposal."""
+    request_text = body.request.strip()
+
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+
+    criteria = None
+    engine = "PayPilot Autonomous Rules Engine"
+
+    if gemini_key:
+        criteria = await parse_intent_with_gemini(request_text, gemini_key)
+        if criteria:
+            model_name = criteria.pop("_model", "gemini-3.8-flash")
+            engine = f"Google {model_name} (AI Agent)"
+
+    if not criteria and openai_key:
+        criteria = await parse_intent_with_openai(request_text, openai_key)
+        if criteria:
+            engine = "OpenAI GPT-4o-mini (AI Agent)"
+
+    if not criteria:
+        criteria = parse_intent_with_rules(request_text)
+        engine = "PayPilot Autonomous Rules Engine"
+
+    selected_category = criteria.get("category")
+    max_budget = criteria.get("max_budget_usd")
+    min_rating = criteria.get("minimum_rating")
+    keywords = [k.lower() for k in criteria.get("keywords") or []]
+    reasoning = criteria.get("reasoning") or "Matched criteria against catalog."
+
+    candidates = list(DEMO_PRODUCTS)
 
     if selected_category:
+        cat_lower = selected_category.lower()
         candidates = [
-            product
-            for product in candidates
-            if product["category"].lower() == selected_category
+            p for p in candidates
+            if p["category"].lower() == cat_lower
         ]
 
     if max_budget is not None:
         candidates = [
-            product for product in candidates
-            if product["currency"] == "USD"
-            and product["price"] <= max_budget
+            p for p in candidates
+            if p["currency"] == "USD" and p["price"] <= max_budget
         ]
 
     if min_rating is not None:
         candidates = [
-            product for product in candidates
-            if product["rating"] >= min_rating
+            p for p in candidates
+            if p["rating"] >= min_rating
         ]
+
+    def relevance_score(product: dict) -> int:
+        score = 0
+        text = f"{product['name']} {product['description']} {product['category']}".lower()
+        for kw in keywords:
+            if kw in text:
+                score += 10
+        return score
 
     candidates = sorted(
         candidates,
-        key=lambda product: (-product["rating"], product["price"]),
+        key=lambda p: (-relevance_score(p), -p["rating"], p["price"]),
     )
 
+    proposal_id = f"prop-{uuid.uuid4().hex[:8]}"
+
     return {
-        "proposal_id": "demo-proposal-001",
+        "proposal_id": proposal_id,
         "status": "PROPOSED",
         "user_request": request_text,
+        "engine": engine,
+        "reasoning": reasoning,
         "criteria": {
             "category": selected_category,
             "max_budget_usd": max_budget,
