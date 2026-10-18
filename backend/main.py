@@ -5,7 +5,7 @@ import re
 import uuid
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Path, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from pydantic import BaseModel, Field
@@ -16,6 +16,8 @@ from database import (
     mark_captured,
     list_transactions,
     get_transaction,
+    log_transaction_event,
+    list_transaction_events,
 )
 
 load_dotenv()
@@ -514,8 +516,8 @@ async def create_checkout_order(body: CheckoutRequest):
                     "application_context": {
                         "brand_name": "PayPilot Demo",
                         "user_action": "PAY_NOW",
-                        "return_url": "http://localhost:3000/checkout/return",
-                        "cancel_url": "http://localhost:3000/checkout/cancel",
+                        "return_url": f"{frontend_origin.rstrip('/')}/checkout/return",
+                        "cancel_url": f"{frontend_origin.rstrip('/')}/checkout/cancel",
                     },
                 },
             )
@@ -555,6 +557,18 @@ async def create_checkout_order(body: CheckoutRequest):
             price_usd=str(price_usd),
             budget_usd=str(body.max_budget_usd),
             checkout_amount=str(price_usd),
+        )
+        log_transaction_event(
+            order_id=order["id"],
+            event_type="ORDER_CREATED",
+            outcome="SUCCESS",
+            message="PayPal Sandbox order created after policy approval.",
+            metadata={
+                "product_id": product["id"],
+                "currency": "USD",
+                "checkout_amount": str(price_usd),
+                "policy_decision": "APPROVED",
+            },
         )
     except Exception as err:
         print(f"Warning: Failed to record order transaction: {err}")
@@ -648,7 +662,20 @@ async def capture_checkout_order(body: CaptureRequest):
                     existing_capture = captures[0].get("id")
 
                 if existing_capture:
-                    mark_captured(body.order_id, existing_capture)
+                    updated = mark_captured(body.order_id, existing_capture)
+                    if updated == 0:
+                        try:
+                            record_order(
+                                order_id=body.order_id,
+                                product_id=product["id"],
+                                product_name=product["name"],
+                                price_usd=str(price_usd),
+                                budget_usd=str(price_usd),
+                                checkout_amount=str(price_usd),
+                            )
+                            mark_captured(body.order_id, existing_capture)
+                        except Exception as err:
+                            print(f"Warning: Failed to record already-captured order: {err}")
 
                 return {
                     "order_id": body.order_id,
@@ -735,6 +762,20 @@ async def capture_checkout_order(body: CaptureRequest):
         except Exception as err:
             print(f"Warning: Failed to update local transaction record: {err}")
 
+    try:
+        log_transaction_event(
+            order_id=body.order_id,
+            event_type="CAPTURE_VERIFIED",
+            outcome="SUCCESS",
+            message="PayPal capture verified by the backend.",
+            metadata={
+                "capture_id": verified_capture["id"],
+                "currency": "USD",
+            },
+        )
+    except Exception as err:
+        print(f"Warning: Failed to log transaction capture event: {err}")
+
     return {
         "order_id": body.order_id,
         "capture_id": verified_capture["id"],
@@ -769,3 +810,20 @@ def get_transaction_details(order_id: str):
         )
 
     return {"transaction": transaction}
+
+
+@app.get("/api/transactions/{order_id}/events")
+def get_transaction_audit_events(order_id: str):
+    """Return the audit events for one order."""
+    transaction = get_transaction(order_id)
+
+    if transaction is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Transaction not found.",
+        )
+
+    return {
+        "order_id": order_id,
+        "events": list_transaction_events(order_id),
+    }

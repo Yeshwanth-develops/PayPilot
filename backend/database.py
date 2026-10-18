@@ -3,6 +3,8 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Dict, List, Optional
 
+import json
+
 DB_PATH = Path(__file__).resolve().parent / "paypilot.db"
 
 
@@ -47,6 +49,100 @@ def initialize_database() -> None:
         """)
 
 
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS transaction_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                paypal_order_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                outcome TEXT NOT NULL,
+                message TEXT NOT NULL,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT
+                    (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            )
+        """)
+
+        connection.execute("""
+            CREATE INDEX IF NOT EXISTS
+            idx_transaction_events_order_id
+            ON transaction_events(paypal_order_id, id)
+        """)
+
+
+def log_transaction_event(
+    order_id: str,
+    event_type: str,
+    outcome: str,
+    message: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Append a safe audit event for a PayPal order."""
+    metadata_json = json.dumps(
+        metadata or {},
+        separators=(",", ":"),
+        default=str,
+    )
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO transaction_events (
+                paypal_order_id,
+                event_type,
+                outcome,
+                message,
+                metadata_json
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                order_id,
+                event_type,
+                outcome,
+                message,
+                metadata_json,
+            ),
+        )
+
+
+def list_transaction_events(
+    order_id: str,
+    limit: int = 100,
+) -> List[Dict[str, Any]]:
+    """Return the audit history for one order, oldest first."""
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                paypal_order_id,
+                event_type,
+                outcome,
+                message,
+                metadata_json,
+                created_at
+            FROM transaction_events
+            WHERE paypal_order_id = ?
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (order_id, max(1, min(limit, 500))),
+        ).fetchall()
+
+        events = []
+        for row in rows:
+            event = dict(row)
+            try:
+                event["metadata"] = json.loads(
+                    event.pop("metadata_json")
+                )
+            except (json.JSONDecodeError, TypeError):
+                event["metadata"] = {}
+            events.append(event)
+
+        return events
+
+
 def record_order(
     order_id: str,
     product_id: str,
@@ -70,6 +166,14 @@ def record_order(
                 payment_status
             )
             VALUES (?, ?, ?, ?, ?, ?, 'USD', ?, 'CREATED')
+            ON CONFLICT(paypal_order_id) DO UPDATE SET
+                product_id = excluded.product_id,
+                product_name = excluded.product_name,
+                catalog_price_usd = excluded.catalog_price_usd,
+                budget_limit_usd = excluded.budget_limit_usd,
+                checkout_amount = excluded.checkout_amount,
+                policy_decision = excluded.policy_decision,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
         """, (
             order_id,
             product_id,

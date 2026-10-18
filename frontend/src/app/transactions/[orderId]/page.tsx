@@ -20,6 +20,21 @@ type Transaction = {
     updated_at: string;
 };
 
+type AuditEvent = {
+    id: number;
+    paypal_order_id: string;
+    event_type: string;
+    outcome: string;
+    message: string;
+    metadata: Record<string, unknown>;
+    created_at: string;
+};
+
+type AuditEventsResponse = {
+    order_id: string;
+    events: AuditEvent[];
+};
+
 const API_BASE = (
     process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 ).replace(/\/$/, "");
@@ -29,18 +44,6 @@ const usd = (value: string | number) =>
         style: "currency",
         currency: "USD",
     }).format(Number(value));
-
-const dateTime = (value: string) => {
-    if (!value) return "Not available";
-
-    const date = new Date(value);
-    return Number.isNaN(date.getTime())
-        ? value
-        : date.toLocaleString("en-US", {
-            dateStyle: "medium",
-            timeStyle: "short",
-        });
-};
 
 function InfoCard({
     label,
@@ -64,6 +67,9 @@ export default function TransactionDetailPage() {
     const orderId = params?.orderId ? decodeURIComponent(params.orderId) : "";
 
     const [transaction, setTransaction] = useState<Transaction | null>(null);
+    const [events, setEvents] = useState<AuditEvent[]>([]);
+    const [eventsLoading, setEventsLoading] = useState(true);
+    const [eventsError, setEventsError] = useState("");
     const [loading, setLoading] = useState(Boolean(orderId));
     const [error, setError] = useState(
         orderId ? "" : "No order ID provided in URL."
@@ -109,7 +115,33 @@ export default function TransactionDetailPage() {
             }
         }
 
-        loadTransaction();
+        async function loadAuditEvents(targetOrderId: string) {
+            try {
+                const response = await fetch(
+                    `/api/transactions/${encodeURIComponent(targetOrderId)}/events`,
+                    { signal: controller.signal, cache: "no-store" }
+                );
+
+                if (!response.ok) {
+                    throw new Error("Audit history is currently unavailable.");
+                }
+
+                const data: AuditEventsResponse = await response.json();
+                setEvents(data.events ?? []);
+            } catch (err) {
+                if (err instanceof Error && err.name === "AbortError") {
+                    return;
+                }
+                setEventsError("Could not load audit history.");
+            } finally {
+                if (!controller.signal.aborted) {
+                    setEventsLoading(false);
+                }
+            }
+        }
+
+        void loadTransaction();
+        void loadAuditEvents(orderId);
 
         return () => controller.abort();
     }, [orderId]);
@@ -195,7 +227,7 @@ export default function TransactionDetailPage() {
                                 />
                                 <InfoCard
                                     label="Checkout amount"
-                                    value={`${transaction.checkout_currency} ${Number(transaction.checkout_amount).toFixed(2)}`}
+                                    value={usd(transaction.checkout_amount)}
                                 />
                                 <InfoCard
                                     label="Spending budget"
@@ -264,26 +296,77 @@ export default function TransactionDetailPage() {
                             </p>
                         </section>
 
-                        <section className="rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:p-8">
-                            <h2 className="text-xl font-bold">Record timeline</h2>
-                            <ol className="mt-5 space-y-5">
-                                <li className="border-l-2 border-cyan-400/50 pl-4">
-                                    <p className="font-medium">Order record created</p>
-                                    <p className="mt-1 text-sm text-slate-400">
-                                        {dateTime(transaction.created_at)}
-                                    </p>
-                                </li>
-                                <li className="border-l-2 border-cyan-400/50 pl-4">
-                                    <p className="font-medium">Record last updated</p>
-                                    <p className="mt-1 text-sm text-slate-400">
-                                        {dateTime(transaction.updated_at)}
-                                    </p>
-                                </li>
-                            </ol>
-                            <p className="mt-4 text-sm text-slate-500">
-                                These are database timestamps, not a complete history
-                                of every PayPal or policy event.
-                            </p>
+                        <section className="mt-8 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                            <div className="mb-5">
+                                <h2 className="text-lg font-semibold text-gray-900">
+                                    Audit Timeline
+                                </h2>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Recorded events for this PayPal transaction.
+                                </p>
+                            </div>
+
+                            {eventsLoading ? (
+                                <p className="text-sm text-gray-500">
+                                    Loading audit history...
+                                </p>
+                            ) : eventsError ? (
+                                <p className="text-sm text-red-600">{eventsError}</p>
+                            ) : events.length === 0 ? (
+                                <p className="text-sm text-gray-500">
+                                    No audit events recorded for this transaction.
+                                </p>
+                            ) : (
+                                <ol className="space-y-5">
+                                    {events.map((event) => (
+                                        <li key={event.id} className="flex gap-4">
+                                            <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100">
+                                                {event.outcome === "SUCCESS" ? (
+                                                    <span className="text-green-600">✓</span>
+                                                ) : (
+                                                    <span className="text-gray-600">•</span>
+                                                )}
+                                            </div>
+
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <h3 className="font-medium text-gray-900">
+                                                        {event.event_type.replaceAll("_", " ")}
+                                                    </h3>
+
+                                                    <span
+                                                        className={`rounded-full px-2 py-1 text-xs font-medium ${event.outcome === "SUCCESS"
+                                                            ? "bg-green-100 text-green-700"
+                                                            : "bg-gray-100 text-gray-700"
+                                                            }`}
+                                                    >
+                                                        {event.outcome}
+                                                    </span>
+                                                </div>
+
+                                                <p className="mt-1 text-sm text-gray-600">
+                                                    {event.message}
+                                                </p>
+
+                                                <p className="mt-2 text-xs text-gray-400">
+                                                    {new Date(event.created_at).toLocaleString()}
+                                                </p>
+
+                                                {Object.keys(event.metadata ?? {}).length > 0 && (
+                                                    <details className="mt-3">
+                                                        <summary className="cursor-pointer text-sm text-blue-600">
+                                                            View event metadata
+                                                        </summary>
+                                                        <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-700">
+                                                            {JSON.stringify(event.metadata, null, 2)}
+                                                        </pre>
+                                                    </details>
+                                                )}
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ol>
+                            )}
                         </section>
                     </div>
                 )}

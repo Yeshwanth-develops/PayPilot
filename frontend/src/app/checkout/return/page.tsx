@@ -108,12 +108,22 @@ function ReturnContent() {
                 </div>
             )}
 
-            <Link
-                href="/"
-                className="mt-8 inline-block rounded-xl border border-white/15 px-5 py-3 text-sm transition hover:bg-white/10"
-            >
-                Return to PayPilot
-            </Link>
+            <div className="mt-8 flex flex-wrap gap-3">
+                {result?.order_id && (
+                    <Link
+                        href={`/transactions/${encodeURIComponent(result.order_id)}`}
+                        className="rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-5 py-3 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-400/20"
+                    >
+                        View Transaction Audit →
+                    </Link>
+                )}
+                <Link
+                    href="/"
+                    className="rounded-xl border border-white/15 px-5 py-3 text-sm transition hover:bg-white/10"
+                >
+                    Return to PayPilot
+                </Link>
+            </div>
         </section>
     );
 }

@@ -407,7 +407,7 @@ export default function TransactionsPage() {
                                             </td>
                                             <td className="px-4 py-5">
                                                 <p className="font-semibold text-cyan-300">
-                                                    ${Number(transaction.checkout_amount).toFixed(2)} {transaction.checkout_currency}
+                                                    {usd(transaction.checkout_amount)}
                                                 </p>
                                                 <p className="mt-1 text-xs text-slate-500">
                                                     Budget: {usd(transaction.budget_limit_usd)}
