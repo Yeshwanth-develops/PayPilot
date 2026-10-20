@@ -4,8 +4,6 @@
 [![PayPal Sandbox](https://img.shields.io/badge/PayPal-Sandbox%20v2-003087?style=for-the-badge&logo=paypal&logoColor=white)](https://developer.paypal.com)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16%20Turbopack-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.143-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-
-
 [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-3.8%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![SQLite](https://img.shields.io/badge/SQLite-Audit%20Trail-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org)
@@ -15,6 +13,29 @@ PayPilot is an **AI-powered autonomous commerce platform** designed to solve the
 **The Trust & Liability Problem**. 
 
 While modern LLMs can discover products, giving an autonomous agent unrestricted access to financial instruments invites catastrophic risk from hallucinations, prompt injections, and price tampering. PayPilot places an ironclad **Policy-as-Code Shield** between the AI agent and the **PayPal execution network**.
+
+---
+
+## 📸 Interface & Live Workflow
+
+### 1. Unified 3-Step Commerce Pipeline Command Center
+*Seamlessly connects Gemini AI Natural Language Discovery with real-time budget telemetry and PayPal execution gating.*
+
+![PayPilot 3-Step Commerce Pipeline Command Center](docs/images/pipeline-command-center.png)
+
+---
+
+### 2. Policy-as-Code Shield & PayPal Execution Guardrail
+*Deterministic policy checks ensure no unauthorized order can be created or captured without meeting exact spending rules.*
+
+![Policy-as-Code Spending Shield and PayPal Execution](docs/images/policy-shield-execution.png)
+
+---
+
+### 3. Cryptographic Audit Trail & State Timeline
+*Every order creation, policy decision, and capture verification is logged with immutable timestamped JSON metadata.*
+
+![PayPilot Cryptographic Audit Timeline](docs/images/audit-timeline.png)
 
 ---
 
