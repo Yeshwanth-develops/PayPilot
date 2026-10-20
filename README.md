@@ -16,7 +16,7 @@ While modern LLMs can discover products, giving an autonomous agent unrestricted
 
 ---
 
-## 📸 Interface & Live Workflow
+## Screenshots
 
 ### 1. Unified 3-Step Commerce Pipeline Command Center
 *Seamlessly connects Gemini AI Natural Language Discovery with real-time budget telemetry and PayPal execution gating.*
@@ -80,30 +80,30 @@ sequenceDiagram
 
 ---
 
-## 🎯 Key Features
+## Key Features
 
-### 1. 🧠 Hybrid AI Commerce Agent
+### 1. Hybrid AI Commerce Agent
 - **Powered by Google Gemini 3.8 Flash**: Interprets natural language shopping prompts (e.g. *"compact mechanical keyboard below 100"* or *"noise-cancelling headphones for travel"*).
 - **Semantic Feature & Relevance Scoring**: Dynamically ranks catalog candidates by feature keyword relevance (`wired`, `wireless`, `mechanical`, `compact`), customer satisfaction rating, and price.
 - **Fail-Safe Resilience**: If no API key is present or network connectivity drops, the system gracefully falls back to the deterministic **PayPilot Autonomous Rules Engine** without breaking or throwing runtime errors.
 
-### 2. 🛡️ Deterministic Spending Policy Engine
+### 2. Deterministic Spending Policy Engine
 - **Policy-as-Code**: Enforces hard spending ceilings, product existence verification, and strict USD currency compliance using exact financial decimal arithmetic (`ROUND_HALF_UP`).
 - **Policy Shield Guarantees**: Policy eligibility *never* equals payment authorization. Authorization remains locked until explicit human-in-the-loop approval.
 - **Explainable Decisions**: Transparent visual breakdown showing product price, spending limit, and remaining budget deficit/surplus.
 
-### 3. 💳 PayPal Sandbox Orders v2 Execution
+### 3. PayPal Sandbox Orders v2 Execution
 - **Server-Side Integration**: Built on PayPal REST API v2 (`/v2/checkout/orders`).
 - **Tamper-Proof Capture**: Before capturing funds, the backend independently queries PayPal to ensure the buyer-approved charge matches the native catalog price, preventing client-side price modification attacks.
 - **Idempotent State Management**: Complete idempotency on order creation and capture updates (`ON CONFLICT(paypal_order_id) DO UPDATE`), preventing duplicate charges.
 
-### 4. 📜 Cryptographic Audit Trail & Financial Dashboard
+### 4. Cryptographic Audit Trail & Financial Dashboard
 - **Immutable Timeline**: Every state transition (`ORDER_CREATED`, `CAPTURE_VERIFIED`) is recorded with timestamped JSON metadata.
 - **Transaction Intelligence**: Live metrics tracking verified catalog spend, completed captures, pending orders, and policy-approved records.
 
 ---
 
-## 🔒 Security & Threat Model
+## Security & Threat Model
 
 | Threat Vector | Risk Description | PayPilot Defense Mechanism |
 | :--- | :--- | :--- |
@@ -114,7 +114,7 @@ sequenceDiagram
 
 ---
 
-## 🔌 PayPal APIs Utilized
+## PayPal APIs Utilized
 
 | Endpoint | Method | Purpose |
 | :--- | :--- | :--- |
@@ -125,7 +125,7 @@ sequenceDiagram
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Frontend**: Next.js 16 (Turbopack, App Router), TypeScript, Vanilla CSS & Tailwind CSS (Dark Glassmorphic Theme).
 - **Backend**: FastAPI, Pydantic v2, HTTPX, Python-dotenv, SQLite3.
@@ -134,7 +134,7 @@ sequenceDiagram
 
 ---
 
-## 🚀 Quickstart & Setup
+## Quickstart & Setup
 
 ### Prerequisites
 - Node.js 18+ & npm
@@ -192,7 +192,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 🔮 Future Roadmap
+## Future Roadmap
 
 - [ ] **PayPal Webhook Automation**: Direct asynchronous webhook handlers (`CHECKOUT.ORDER.APPROVED`) for headless agent checkout.
 - [ ] **Programmable Agent Allowances**: Recurring PayPal subscriptions granting AI agents monthly autonomous micro-budgets.
@@ -200,5 +200,5 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 📄 License
+## License
 This project is open-source under the [MIT License](LICENSE).
