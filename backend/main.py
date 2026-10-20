@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 import uuid
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from pydantic import BaseModel, Field
@@ -47,6 +47,7 @@ frontend_origin = frontend_origins[0]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=frontend_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app|https://.*\.onrender\.com|http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -703,7 +704,7 @@ async def create_purchase_proposal(body: PurchaseRequest):
 
 
 @app.post("/api/checkout/create")
-async def create_checkout_order(body: CheckoutRequest):
+async def create_checkout_order(body: CheckoutRequest, request: Request):
     product = next(
         (p for p in DEMO_PRODUCTS if p["id"] == body.product_id),
         None,
@@ -737,6 +738,13 @@ async def create_checkout_order(body: CheckoutRequest):
         "https://api-m.sandbox.paypal.com",
     ).rstrip("/")
 
+    req_origin = request.headers.get("origin")
+    target_origin = (
+        req_origin.rstrip("/")
+        if req_origin and ("vercel.app" in req_origin or "localhost" in req_origin)
+        else frontend_origin.rstrip("/")
+    )
+
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             token = await get_paypal_access_token(client)
@@ -763,8 +771,8 @@ async def create_checkout_order(body: CheckoutRequest):
                     "application_context": {
                         "brand_name": "PayPilot Demo",
                         "user_action": "PAY_NOW",
-                        "return_url": f"{frontend_origin.rstrip('/')}/checkout/return",
-                        "cancel_url": f"{frontend_origin.rstrip('/')}/checkout/cancel",
+                        "return_url": f"{target_origin}/checkout/return",
+                        "cancel_url": f"{target_origin}/checkout/cancel",
                     },
                 },
             )
