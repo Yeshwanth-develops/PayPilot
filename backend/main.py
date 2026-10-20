@@ -35,17 +35,21 @@ app = FastAPI(
 def startup_database():
     initialize_database()
 
-frontend_origin = os.getenv(
+frontend_origin_raw = os.getenv(
     "FRONTEND_ORIGIN",
     "http://localhost:3000",
 )
+frontend_origins = [o.strip() for o in frontend_origin_raw.split(",") if o.strip()]
+if "http://localhost:3000" not in frontend_origins:
+    frontend_origins.append("http://localhost:3000")
+frontend_origin = frontend_origins[0]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_origin],
+    allow_origins=frontend_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Demo product catalog in USD
